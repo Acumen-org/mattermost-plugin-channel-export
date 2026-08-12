@@ -152,7 +152,7 @@ func TestExecuteCommand(t *testing.T) {
 		})
 
 		commandResponse, appError := plugin.ExecuteCommand(pluginContext, &model.CommandArgs{
-			Command:   "/export",
+			Command:   "/export from:2024-01-01",
 			ChannelId: "channel_id",
 			UserId:    "user_id",
 		})
@@ -180,7 +180,7 @@ func TestExecuteCommand(t *testing.T) {
 		mockUser.EXPECT().HasPermissionToChannel("", "channel_id", model.PermissionManageChannelRoles).Return(false)
 
 		commandResponse, appError := plugin.ExecuteCommand(pluginContext, &model.CommandArgs{
-			Command:   "/export",
+			Command:   "/export from:2024-01-01",
 			ChannelId: "channel_id",
 		})
 
@@ -215,7 +215,7 @@ func TestExecuteCommand(t *testing.T) {
 		mockLog.EXPECT().Error("unable to retrieve the channel to export", "Channel ID", "channel_id", "Error", gomock.Any())
 
 		commandResponse, appError := plugin.ExecuteCommand(pluginContext, &model.CommandArgs{
-			Command:   "/export",
+			Command:   "/export from:2024-01-01",
 			ChannelId: "channel_id",
 		})
 
@@ -251,7 +251,7 @@ func TestExecuteCommand(t *testing.T) {
 		mockLog.EXPECT().Error("unable to create a direct message channel between the bot and the user", "Bot ID", "bot_id", "User ID", "user_id", "Error", gomock.Any())
 
 		commandResponse, appError := plugin.ExecuteCommand(pluginContext, &model.CommandArgs{
-			Command:   "/export",
+			Command:   "/export from:2024-01-01",
 			ChannelId: "channel_id",
 			UserId:    "user_id",
 		})
@@ -305,7 +305,7 @@ func TestExecuteCommand(t *testing.T) {
 		})
 
 		commandResponse, appError := plugin.ExecuteCommand(pluginContext, &model.CommandArgs{
-			Command:   "/export",
+			Command:   "/export from:2024-01-01",
 			ChannelId: "channel_id",
 			UserId:    "user_id",
 		})
@@ -367,7 +367,7 @@ func TestExecuteCommand(t *testing.T) {
 		})
 
 		commandResponse, appError := plugin.ExecuteCommand(pluginContext, &model.CommandArgs{
-			Command:   "/export",
+			Command:   "/export from:2024-01-01",
 			ChannelId: "channel_id",
 			UserId:    "user_id",
 		})
@@ -429,7 +429,7 @@ func TestExecuteCommand(t *testing.T) {
 		})
 
 		commandResponse, appError := plugin.ExecuteCommand(pluginContext, &model.CommandArgs{
-			Command:   "/export",
+			Command:   "/export from:2024-01-01",
 			ChannelId: "channel_id",
 			UserId:    "user_id",
 		})
@@ -441,7 +441,7 @@ func TestExecuteCommand(t *testing.T) {
 		// concurrent executions should fail
 		for range 3 {
 			commandResponse, appError = plugin.ExecuteCommand(pluginContext, &model.CommandArgs{
-				Command:   "/export",
+				Command:   "/export from:2024-01-01",
 				ChannelId: "channel_id",
 				UserId:    "user_id",
 			})
@@ -537,7 +537,7 @@ func TestExecuteCommand(t *testing.T) {
 		})
 
 		commandResponse, appError := p.ExecuteCommand(pluginContext, &model.CommandArgs{
-			Command:   "/export",
+			Command:   "/export from:2024-01-01",
 			ChannelId: "channel_id",
 			UserId:    "user_id",
 		})
@@ -588,7 +588,7 @@ func TestExecuteCommand(t *testing.T) {
 		})
 
 		commandResponse, appError := plugin.ExecuteCommand(pluginCtx, &model.CommandArgs{
-			Command:   "/export",
+			Command:   "/export from:2024-01-01",
 			ChannelId: "channel_id",
 			UserId:    "user_id",
 		})
@@ -904,4 +904,44 @@ func BaseMockSetup(t *testing.T) (
 	mockAPI := pluginapi.CustomWrapper(mockChannel, mockFile, mockLog, mockPost, mockSlashCommand, mockUser, mockSystem, mockConfiguration, mockCluster)
 
 	return mockChannel, mockFile, mockLog, mockPost, mockSlashCommand, mockUser, mockSystem, mockConfiguration, mockCluster, mockAPI
+}
+
+func TestParseExportArgs(t *testing.T) {
+	t.Run("no args returns zero filter", func(t *testing.T) {
+		f, err := parseExportArgs("/export")
+		require.NoError(t, err)
+		assert.True(t, f.Since.IsZero())
+		assert.True(t, f.Until.IsZero())
+	})
+
+	t.Run("from only", func(t *testing.T) {
+		f, err := parseExportArgs("/export from:2024-01-15")
+		require.NoError(t, err)
+		assert.Equal(t, time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC), f.Since)
+		assert.True(t, f.Until.IsZero())
+	})
+
+	t.Run("to only", func(t *testing.T) {
+		f, err := parseExportArgs("/export to:2024-03-31")
+		require.NoError(t, err)
+		assert.True(t, f.Since.IsZero())
+		assert.Equal(t, time.Date(2024, 3, 31, 23, 59, 59, 999999999, time.UTC), f.Until)
+	})
+
+	t.Run("from and to", func(t *testing.T) {
+		f, err := parseExportArgs("/export from:2024-01-01 to:2024-03-31")
+		require.NoError(t, err)
+		assert.Equal(t, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), f.Since)
+		assert.Equal(t, time.Date(2024, 3, 31, 23, 59, 59, 999999999, time.UTC), f.Until)
+	})
+
+	t.Run("invalid date returns error", func(t *testing.T) {
+		_, err := parseExportArgs("/export from:not-a-date")
+		require.Error(t, err)
+	})
+
+	t.Run("since after until returns error", func(t *testing.T) {
+		_, err := parseExportArgs("/export from:2024-06-01 to:2024-01-01")
+		require.Error(t, err)
+	})
 }

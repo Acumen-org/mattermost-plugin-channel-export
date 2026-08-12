@@ -22,11 +22,39 @@ import (
 
 const exportCommandTrigger = "export"
 
+const dateLayout = "2006-01-02"
+
+func parseExportArgs(command string) (ExportFilter, error) {
+	var filter ExportFilter
+	fields := strings.Fields(command)
+	for _, field := range fields[1:] { // skip the trigger word
+		if after, found := strings.CutPrefix(field, "from:"); found {
+			t, err := time.ParseInLocation(dateLayout, after, time.UTC)
+			if err != nil {
+				return ExportFilter{}, fmt.Errorf("invalid from date %q, use YYYY-MM-DD format", after)
+			}
+			filter.Since = t
+		} else if after, found := strings.CutPrefix(field, "to:"); found {
+			t, err := time.ParseInLocation(dateLayout, after, time.UTC)
+			if err != nil {
+				return ExportFilter{}, fmt.Errorf("invalid to date %q, use YYYY-MM-DD format", after)
+			}
+			// inclusive: end of the given day
+			filter.Until = t.Add(24*time.Hour - time.Nanosecond)
+		}
+	}
+	if !filter.Since.IsZero() && !filter.Until.IsZero() && filter.Since.After(filter.Until) {
+		return ExportFilter{}, fmt.Errorf("from date must be before to date")
+	}
+	return filter, nil
+}
+
 func (p *Plugin) registerCommands() error {
 	if err := p.client.SlashCommand.Register(&model.Command{
 		Trigger:          exportCommandTrigger,
 		AutoComplete:     true,
-		AutoCompleteDesc: "Export the current channel.",
+		AutoCompleteDesc: "Export the current channel to CSV. Opens a date filter dialog, or use from:/to: params directly.",
+		AutoCompleteHint: "[from:YYYY-MM-DD] [to:YYYY-MM-DD]",
 	}); err != nil {
 		return errors.Wrapf(err, "failed to register %s command", exportCommandTrigger)
 	}
@@ -73,6 +101,56 @@ func (p *Plugin) executeCommandExport(args *model.CommandArgs) *model.CommandRes
 			ResponseType: model.CommandResponseTypeEphemeral,
 			Text:         "The channel export plugin requires a valid Enterprise license.",
 		}
+	}
+
+	filter, err := parseExportArgs(args.Command)
+	if err != nil {
+		return &model.CommandResponse{
+			ResponseType: model.CommandResponseTypeEphemeral,
+			Text:         fmt.Sprintf("Invalid export parameters: %s\nUsage: `/export [from:YYYY-MM-DD] [to:YYYY-MM-DD]`", err.Error()),
+		}
+	}
+
+	// If no date args given, open an interactive dialog so the user can choose
+	hasDateArgs := strings.Contains(args.Command, "from:") || strings.Contains(args.Command, "to:")
+	if !hasDateArgs {
+		dialogErr := p.API.OpenInteractiveDialog(model.OpenDialogRequest{
+			TriggerId: args.TriggerId,
+			URL:       fmt.Sprintf("/plugins/%s/api/v1/export/dialog", manifest.Id),
+			Dialog: model.Dialog{
+				Title:       "Export Channel",
+				SubmitLabel: "Export",
+				Elements: []model.DialogElement{
+					{
+						DisplayName: "From date (optional)",
+						Name:        "from",
+						Type:        "text",
+						Placeholder: "YYYY-MM-DD",
+						Optional:    true,
+						HelpText:    "Leave blank to export from the beginning of the channel.",
+					},
+					{
+						DisplayName: "To date (optional)",
+						Name:        "to",
+						Type:        "text",
+						Placeholder: "YYYY-MM-DD",
+						Optional:    true,
+						HelpText:    "Leave blank to export up to today.",
+					},
+				},
+			},
+		})
+		if dialogErr != nil {
+			p.client.Log.Error("unable to open export dialog", "Error", dialogErr)
+			return &model.CommandResponse{
+				ResponseType: model.CommandResponseTypeEphemeral,
+				Text:         "Unable to open the export dialog.",
+			}
+		}
+		// Unlock the mutex immediately — dialog submission will re-acquire it
+		p.clusterMutex.Unlock()
+		active = false
+		return &model.CommandResponse{}
 	}
 
 	if !p.hasPermissionToExportChannel(args.UserId, args.ChannelId) {
@@ -175,7 +253,7 @@ func (p *Plugin) executeCommandExport(args *model.CommandArgs) *model.CommandRes
 
 	go func() {
 		defer wg.Done()
-		err := exporter.Export(p.makeChannelPostsIterator(channelToExport, showEmailAddress(p.client, args.UserId), ExportFilter{}), exportedFileWriter)
+		err := exporter.Export(p.makeChannelPostsIterator(channelToExport, showEmailAddress(p.client, args.UserId), filter), exportedFileWriter)
 		if err != nil {
 			logger.WithError(err).Warn("failed to export channel")
 
