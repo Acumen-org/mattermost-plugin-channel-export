@@ -135,7 +135,7 @@ func TestExecuteCommand(t *testing.T) {
 				ShowEmailAddress: &trueValue,
 			},
 		})
-		mockFile.EXPECT().Upload(gomock.Any(), "channel_name.csv", "direct").Do(func(reader io.Reader, _ /*fileName*/, _ /*channelID*/ string) {
+		mockFile.EXPECT().Upload(gomock.Any(), gomock.Any(), "direct").Do(func(reader io.Reader, _ /*fileName*/, _ /*channelID*/ string) {
 			contents, err := io.ReadAll(reader)
 			require.NoError(t, err)
 			expected := `Post Creation Time,User Id,User Email,User Type,User Name,Post Id,Parent Post Id,Post Message,Post Type
@@ -288,7 +288,7 @@ func TestExecuteCommand(t *testing.T) {
 		mockChannel.EXPECT().GetDirect("user_id", "bot_id").Return(&model.Channel{Id: "direct"}, nil)
 		mockUser.EXPECT().HasPermissionTo("user_id", model.PermissionManageSystem).Return(false).Times(1)
 		mockConfiguration.EXPECT().GetConfig().Return(&model.Config{}).Times(1)
-		mockFile.EXPECT().Upload(gomock.Any(), "channel_name.csv", "direct").Do(func(reader io.Reader, _ /*fileName*/, _ /*channelID*/ string) {
+		mockFile.EXPECT().Upload(gomock.Any(), gomock.Any(), "direct").Do(func(reader io.Reader, _ /*fileName*/, _ /*channelID*/ string) {
 			contents, err := io.ReadAll(reader)
 			require.NoError(t, err)
 			expected := `Post Creation Time,User Id,User Email,User Type,User Name,Post Id,Parent Post Id,Post Message,Post Type
@@ -350,7 +350,7 @@ func TestExecuteCommand(t *testing.T) {
 				ShowEmailAddress: &trueValue,
 			},
 		})
-		mockFile.EXPECT().Upload(gomock.Any(), "channel_name.csv", "direct").Do(func(reader io.Reader, _ /*fileName*/, _ /*channelID*/ string) {
+		mockFile.EXPECT().Upload(gomock.Any(), gomock.Any(), "direct").Do(func(reader io.Reader, _ /*fileName*/, _ /*channelID*/ string) {
 			contents, err := io.ReadAll(reader)
 			require.NoError(t, err)
 			expected := `Post Creation Time,User Id,User Email,User Type,User Name,Post Id,Parent Post Id,Post Message,Post Type
@@ -414,7 +414,7 @@ func TestExecuteCommand(t *testing.T) {
 		})
 		wg := sync.WaitGroup{}
 		wg.Add(1)
-		mockFile.EXPECT().Upload(gomock.Any(), "channel_name.csv", "direct").Do(func(reader io.Reader, _ /*fileName*/, _ /*channelID*/ string) {
+		mockFile.EXPECT().Upload(gomock.Any(), gomock.Any(), "direct").Do(func(reader io.Reader, _ /*fileName*/, _ /*channelID*/ string) {
 			defer wg.Done()
 			t.Log("about to sleep for 3s")
 			time.Sleep(time.Second * 3)
@@ -523,7 +523,7 @@ func TestExecuteCommand(t *testing.T) {
 		mockConfiguration.EXPECT().GetConfig().Return(&model.Config{}).Times(1)
 		mockLog.EXPECT().Error(mockTypeString, "Channel ID", mockTypeString, "Error", gomock.Any())
 
-		mockFile.EXPECT().Upload(gomock.Any(), "channel_name.csv", "direct").DoAndReturn(func(reader io.Reader, _, _ string) (*model.FileInfo, error) {
+		mockFile.EXPECT().Upload(gomock.Any(), gomock.Any(), "direct").DoAndReturn(func(reader io.Reader, _, _ string) (*model.FileInfo, error) {
 			_, err := io.ReadAll(reader)
 			require.Error(t, err)
 			return nil, err
