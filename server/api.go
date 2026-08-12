@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/mattermost/mattermost/server/public/model"
 
 	"github.com/mattermost/mattermost-plugin-channel-export/server/pluginapi"
+	"github.com/mattermost/mattermost-plugin-channel-export/server/util"
 )
 
 const (
@@ -46,6 +48,7 @@ func registerAPI(plugin *Plugin, makePostsIterator func(*model.Channel, bool, Ex
 	api := handler.plugin.router.PathPrefix("/api/v1").Subrouter()
 	api.Use(mattermostAuthorizationRequired)
 	api.HandleFunc("/export", handler.Export)
+	api.HandleFunc("/export/dialog", handler.ExportDialog).Methods(http.MethodPost)
 	return nil
 }
 
@@ -159,15 +162,156 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	postIterator := h.makePostsIterator(channel, showEmailAddress(h.client, userID), ExportFilter{})
+	sinceStr := r.URL.Query().Get("since")
+	untilStr := r.URL.Query().Get("until")
+
+	since, err := parseDateParam(sinceStr)
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "invalid since parameter: use YYYY-MM-DD format")
+		return
+	}
+	until, err := parseDateParam(untilStr)
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "invalid until parameter: use YYYY-MM-DD format")
+		return
+	}
+	if !until.IsZero() {
+		until = until.Add(24*time.Hour - time.Nanosecond)
+	}
+	if !since.IsZero() && !until.IsZero() && since.After(until) {
+		handleError(w, http.StatusBadRequest, "since must be before until")
+		return
+	}
+	filter := ExportFilter{Since: since, Until: until}
+
+	postIterator := h.makePostsIterator(channel, showEmailAddress(h.client, userID), filter)
 
 	exporter := CSV{}
 	fileName := exporter.FileName(channel.Name)
 
 	w.Header().Set("Content-Disposition", "attachment; filename="+fileName)
 	w.Header().Set("Content-Type", exporter.ContentType())
-	err := exporter.Export(postIterator, w)
-	if err != nil {
+	if err := exporter.Export(postIterator, w); err != nil {
 		handleError(w, http.StatusInternalServerError, "failed to create the exported data")
 	}
+}
+
+// parseDateParam parses an optional YYYY-MM-DD date string in UTC.
+// An empty string returns a zero time.Time with no error.
+func parseDateParam(value string) (time.Time, error) {
+	if value == "" {
+		return time.Time{}, nil
+	}
+	return time.ParseInLocation("2006-01-02", value, time.UTC)
+}
+
+// ExportDialog handles POST /api/v1/export/dialog — the interactive dialog submission.
+func (h *Handler) ExportDialog(w http.ResponseWriter, r *http.Request) {
+	var req model.SubmitDialogRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		handleError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	dialogError := func(msg string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		resp := model.SubmitDialogResponse{Error: msg}
+		b, _ := json.Marshal(resp)
+		_, _ = w.Write(b)
+	}
+
+	fromStr, _ := req.Submission["from"].(string)
+	toStr, _ := req.Submission["to"].(string)
+
+	since, err := parseDateParam(fromStr)
+	if err != nil {
+		dialogError(fmt.Sprintf("Invalid from date %q, use YYYY-MM-DD format.", fromStr))
+		return
+	}
+	until, err := parseDateParam(toStr)
+	if err != nil {
+		dialogError(fmt.Sprintf("Invalid to date %q, use YYYY-MM-DD format.", toStr))
+		return
+	}
+	if !until.IsZero() {
+		until = until.Add(24*time.Hour - time.Nanosecond)
+	}
+	if !since.IsZero() && !until.IsZero() && since.After(until) {
+		dialogError("From date must be before to date.")
+		return
+	}
+
+	filter := ExportFilter{Since: since, Until: until}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
+	if err := h.clusterMutex.LockWithContext(ctx); err != nil {
+		dialogError("An export is already running.")
+		return
+	}
+
+	channelID := req.ChannelId
+	userID := req.UserId
+
+	channel, ok := h.hasPermissionToChannel(userID, channelID)
+	if !ok {
+		h.clusterMutex.Unlock()
+		dialogError("You do not have permission to export this channel.")
+		return
+	}
+
+	if !h.plugin.hasPermissionToExportChannel(userID, channelID) {
+		h.clusterMutex.Unlock()
+		dialogError("You do not have permission to export channels.")
+		return
+	}
+
+	go func() {
+		defer h.clusterMutex.Unlock()
+
+		exporter := CSV{}
+		fileName := exporter.FileName(channel.Name)
+		postIter := h.makePostsIterator(channel, showEmailAddress(h.client, userID), filter)
+
+		channelDM, err := h.client.Channel.GetDirect(userID, h.plugin.botID)
+		if err != nil {
+			h.client.Log.Error("dialog export: unable to create DM channel", "Error", err)
+			return
+		}
+
+		pr, pw := io.Pipe()
+		limitedWriter := util.NewLimitPipeWriter(pw, h.plugin.getMaxFileSize())
+
+		go func() {
+			if err := exporter.Export(postIter, limitedWriter); err != nil {
+				_ = limitedWriter.CloseWithError(err)
+				return
+			}
+			_ = limitedWriter.Close()
+		}()
+
+		file, err := h.plugin.uploadFileTo(fileName, pr, channelDM.Id)
+		if err != nil {
+			_ = h.client.Post.CreatePost(&model.Post{
+				UserId:    h.plugin.botID,
+				ChannelId: channelDM.Id,
+				Message:   fmt.Sprintf("Export failed: %s", err.Error()),
+			})
+			return
+		}
+
+		successMsg := fmt.Sprintf("Channel ~%s exported:", channel.Name)
+		_ = h.client.Post.CreatePost(&model.Post{
+			UserId:    h.plugin.botID,
+			ChannelId: channelDM.Id,
+			Message:   successMsg,
+			FileIds:   []string{file.Id},
+		})
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	b, _ := json.Marshal(model.SubmitDialogResponse{})
+	_, _ = w.Write(b)
 }
