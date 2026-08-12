@@ -17,9 +17,17 @@ import (
 // ordered file in CSV format
 type CSV struct{}
 
-// FileName returns the passed name with the .csv extension added
-func (e *CSV) FileName(name string) string {
-	return fmt.Sprintf("%s.csv", name)
+// FileName returns the passed name with the .csv extension added, plus an optional
+// date-range suffix derived from the filter (e.g. "_from_2024-01-01_to_2024-03-31").
+func (e *CSV) FileName(name string, filter ExportFilter) string {
+	suffix := ""
+	if !filter.Since.IsZero() {
+		suffix += "_from_" + filter.Since.Format("2006-01-02")
+	}
+	if !filter.Until.IsZero() {
+		suffix += "_to_" + filter.Until.Format("2006-01-02")
+	}
+	return fmt.Sprintf("%s%s.csv", name, suffix)
 }
 
 // ContentType returns the content type of the file format being exported.

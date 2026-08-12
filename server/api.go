@@ -187,7 +187,7 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 	postIterator := h.makePostsIterator(channel, showEmailAddress(h.client, userID), filter)
 
 	exporter := CSV{}
-	fileName := exporter.FileName(channel.Name)
+	fileName := exporter.FileName(channel.Name, filter)
 
 	w.Header().Set("Content-Disposition", "attachment; filename="+fileName)
 	w.Header().Set("Content-Type", exporter.ContentType())
@@ -271,7 +271,7 @@ func (h *Handler) ExportDialog(w http.ResponseWriter, r *http.Request) {
 		defer h.clusterMutex.Unlock()
 
 		exporter := CSV{}
-		fileName := exporter.FileName(channel.Name)
+		fileName := exporter.FileName(channel.Name, filter)
 		postIter := h.makePostsIterator(channel, showEmailAddress(h.client, userID), filter)
 
 		channelDM, err := h.client.Channel.GetDirect(userID, h.plugin.botID)

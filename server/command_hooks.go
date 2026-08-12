@@ -236,7 +236,7 @@ func (p *Plugin) executeCommandExport(args *model.CommandArgs) *model.CommandRes
 	}
 
 	exporter := CSV{}
-	fileName := exporter.FileName(channelToExportName)
+	fileName := exporter.FileName(channelToExportName, filter)
 
 	exportError := errors.New("failed to export channel")
 

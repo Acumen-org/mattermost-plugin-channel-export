@@ -73,7 +73,7 @@ func TestHandler(t *testing.T) {
 		address := setupAPI(t, mockAPI, time.Now(), "", "channel_id", nil)
 		client := NewClient(address)
 
-		err := client.ExportChannel(io.Discard, "channel_id", FormatCSV)
+		err := client.ExportChannel(io.Discard, "channel_id", FormatCSV, "", "")
 		require.EqualError(t, err, "failed with status code 401")
 	})
 
@@ -105,7 +105,7 @@ func TestHandler(t *testing.T) {
 			},
 		}).Times(1)
 
-		err := client.ExportChannel(io.Discard, "channel_id", FormatCSV)
+		err := client.ExportChannel(io.Discard, "channel_id", FormatCSV, "", "")
 		require.EqualError(t, err, "the channel export plugin requires a valid Enterprise license.")
 	})
 
@@ -154,7 +154,7 @@ func TestHandler(t *testing.T) {
 		})
 
 		var buffer bytes.Buffer
-		err := client.ExportChannel(&buffer, channelID, FormatCSV)
+		err := client.ExportChannel(&buffer, channelID, FormatCSV, "", "")
 		require.NoError(t, err)
 
 		expected := `Post Creation Time,User Id,User Email,User Type,User Name,Post Id,Parent Post Id,Post Message,Post Type
@@ -189,7 +189,7 @@ func TestHandler(t *testing.T) {
 		}}).Times(2)
 		mockConfiguration.EXPECT().GetConfig().Return(&model.Config{}).Times(1)
 
-		err := client.ExportChannel(io.Discard, "", FormatCSV)
+		err := client.ExportChannel(io.Discard, "", FormatCSV, "", "")
 		require.EqualError(t, err, "missing channel_id parameter")
 	})
 
@@ -218,7 +218,7 @@ func TestHandler(t *testing.T) {
 		}}).Times(2)
 		mockConfiguration.EXPECT().GetConfig().Return(&model.Config{}).Times(1)
 
-		err := client.ExportChannel(io.Discard, "channel_id", "")
+		err := client.ExportChannel(io.Discard, "channel_id", "", "", "")
 		require.EqualError(t, err, "missing format parameter")
 	})
 
@@ -247,7 +247,7 @@ func TestHandler(t *testing.T) {
 		}}).Times(2)
 		mockConfiguration.EXPECT().GetConfig().Return(&model.Config{}).Times(1)
 
-		err := client.ExportChannel(io.Discard, "channel_id", "pdf2")
+		err := client.ExportChannel(io.Discard, "channel_id", "pdf2", "", "")
 		require.EqualError(t, err, "unsupported format parameter 'pdf2'")
 	})
 
@@ -278,7 +278,7 @@ func TestHandler(t *testing.T) {
 		mockConfiguration.EXPECT().GetConfig().Return(&model.Config{}).Times(1)
 		mockChannel.EXPECT().Get(channelID).Return(nil, &model.AppError{StatusCode: http.StatusNotFound}).Times(1)
 
-		err := client.ExportChannel(io.Discard, channelID, FormatCSV)
+		err := client.ExportChannel(io.Discard, channelID, FormatCSV, "", "")
 		require.EqualError(t, err, "channel 'channel_id' not found or user does not have permission")
 	})
 
@@ -309,7 +309,7 @@ func TestHandler(t *testing.T) {
 		mockConfiguration.EXPECT().GetConfig().Return(&model.Config{}).Times(1)
 		mockChannel.EXPECT().Get(channelID).Return(nil, &model.AppError{StatusCode: http.StatusInternalServerError}).Times(1)
 
-		err := client.ExportChannel(io.Discard, channelID, FormatCSV)
+		err := client.ExportChannel(io.Discard, channelID, FormatCSV, "", "")
 		require.EqualError(t, err, "channel 'channel_id' not found or user does not have permission")
 	})
 
@@ -342,7 +342,7 @@ func TestHandler(t *testing.T) {
 		mockChannel.EXPECT().Get(channelID).Return(&model.Channel{Id: channelID}, nil).Times(1)
 		mockUser.EXPECT().HasPermissionToChannel(userID, channelID, model.PermissionReadChannel).Return(false).Times(1)
 
-		err := client.ExportChannel(io.Discard, channelID, FormatCSV)
+		err := client.ExportChannel(io.Discard, channelID, FormatCSV, "", "")
 		require.EqualError(t, err, "channel 'channel_id' not found or user does not have permission")
 	})
 
@@ -388,7 +388,7 @@ func TestHandler(t *testing.T) {
 		}).Times(1)
 
 		var buffer bytes.Buffer
-		err := client.ExportChannel(&buffer, channelID, FormatCSV)
+		err := client.ExportChannel(&buffer, channelID, FormatCSV, "", "")
 		require.NoError(t, err)
 
 		expected := `Post Creation Time,User Id,User Email,User Type,User Name,Post Id,Parent Post Id,Post Message,Post Type
@@ -440,7 +440,7 @@ func TestHandler(t *testing.T) {
 		})
 
 		var buffer bytes.Buffer
-		err := client.ExportChannel(&buffer, channelID, FormatCSV)
+		err := client.ExportChannel(&buffer, channelID, FormatCSV, "", "")
 		require.NoError(t, err)
 
 		expected := `Post Creation Time,User Id,User Email,User Type,User Name,Post Id,Parent Post Id,Post Message,Post Type
@@ -501,7 +501,7 @@ func TestHandler(t *testing.T) {
 		for range countExec {
 			wg.Go(func() {
 				var buffer bytes.Buffer
-				if err := client.ExportChannel(&buffer, channelID, FormatCSV); err != nil {
+				if err := client.ExportChannel(&buffer, channelID, FormatCSV, "", ""); err != nil {
 					merr.Append(err)
 				} else {
 					expected := `Post Creation Time,User Id,User Email,User Type,User Name,Post Id,Parent Post Id,Post Message,Post Type
@@ -556,7 +556,7 @@ func TestHandler(t *testing.T) {
 		}).Times(2)
 
 		var buffer bytes.Buffer
-		err := client.ExportChannel(&buffer, channelID, FormatCSV)
+		err := client.ExportChannel(&buffer, channelID, FormatCSV, "", "")
 		require.EqualValues(t, "", buffer.String())
 
 		expectedErr := fmt.Sprintf("channel '%s' is archived and not visible anymore", channelID)
@@ -601,7 +601,7 @@ func TestHandler(t *testing.T) {
 		}).Times(2)
 
 		var buffer bytes.Buffer
-		err := client.ExportChannel(&buffer, channelID, FormatCSV)
+		err := client.ExportChannel(&buffer, channelID, FormatCSV, "", "")
 		require.Nil(t, err)
 
 		expected := `Post Creation Time,User Id,User Email,User Type,User Name,Post Id,Parent Post Id,Post Message,Post Type
@@ -650,7 +650,7 @@ func TestHandler(t *testing.T) {
 		}).Times(2)
 
 		var buffer bytes.Buffer
-		err := client.ExportChannel(&buffer, channelID, FormatCSV)
+		err := client.ExportChannel(&buffer, channelID, FormatCSV, "", "")
 		require.EqualValues(t, "", buffer.String())
 
 		expectedErr := "user does not have permission to export channels"
