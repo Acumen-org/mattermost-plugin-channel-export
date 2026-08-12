@@ -34,7 +34,7 @@ type Plugin struct {
 	router *mux.Router
 
 	// makeChannelPostsIterator is a factory function for iterating over posts
-	makeChannelPostsIterator func(*model.Channel, bool) PostIterator
+	makeChannelPostsIterator func(*model.Channel, bool, ExportFilter) PostIterator
 
 	botID string
 
@@ -81,8 +81,8 @@ func (p *Plugin) OnActivate() error {
 	}
 
 	p.router = mux.NewRouter()
-	p.makeChannelPostsIterator = func(channel *model.Channel, showEmailAddress bool) PostIterator {
-		return channelPostsIterator(p.client, channel, showEmailAddress)
+	p.makeChannelPostsIterator = func(channel *model.Channel, showEmailAddress bool, filter ExportFilter) PostIterator {
+		return channelPostsIterator(p.client, channel, showEmailAddress, filter)
 	}
 
 	return registerAPI(p, p.makeChannelPostsIterator)

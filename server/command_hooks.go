@@ -175,7 +175,7 @@ func (p *Plugin) executeCommandExport(args *model.CommandArgs) *model.CommandRes
 
 	go func() {
 		defer wg.Done()
-		err := exporter.Export(p.makeChannelPostsIterator(channelToExport, showEmailAddress(p.client, args.UserId)), exportedFileWriter)
+		err := exporter.Export(p.makeChannelPostsIterator(channelToExport, showEmailAddress(p.client, args.UserId), ExportFilter{}), exportedFileWriter)
 		if err != nil {
 			logger.WithError(err).Warn("failed to export channel")
 

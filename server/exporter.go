@@ -21,6 +21,13 @@ const (
 	PerPage = 500
 )
 
+// ExportFilter constrains which posts are included in an export.
+// Zero values mean no bound: zero Since = include all history, zero Until = include up to now.
+type ExportFilter struct {
+	Since time.Time
+	Until time.Time
+}
+
 // PostIterator returns the next batch of posts when called
 type PostIterator func() ([]*ExportedPost, error)
 
@@ -41,10 +48,14 @@ type ExportedPost struct {
 // channelPostsIterator returns a function that returns, every time it is
 // called, a new batch of posts from the channel, chronologically ordered
 // (most recent first), until all posts have been consumed.
-func channelPostsIterator(client *pluginapi.Wrapper, channel *model.Channel, showEmailAddress bool) PostIterator {
+func channelPostsIterator(client *pluginapi.Wrapper, channel *model.Channel, showEmailAddress bool, filter ExportFilter) PostIterator {
 	usersCache := make(map[string]*model.User)
 	page := 0
+	done := false
 	return func() ([]*ExportedPost, error) {
+		if done {
+			return nil, nil
+		}
 		postList, err := client.Post.GetPostsForChannel(channel.Id, page, PerPage)
 		if err != nil {
 			return nil, err
@@ -57,6 +68,17 @@ func channelPostsIterator(client *pluginapi.Wrapper, channel *model.Channel, sho
 			// Ignore posts that have been edited; exporting only what's visible in the channel
 			if post.OriginalId != "" {
 				continue
+			}
+
+			postTime := time.Unix(0, post.CreateAt*int64(time.Millisecond)).UTC()
+
+			if !filter.Until.IsZero() && postTime.After(filter.Until) {
+				continue
+			}
+			// Posts come oldest-first from GetPostsForChannel; once we're before Since we can stop
+			if !filter.Since.IsZero() && postTime.Before(filter.Since) {
+				done = true
+				break
 			}
 
 			exportedPost, err := toExportedPost(client, post, showEmailAddress, usersCache)

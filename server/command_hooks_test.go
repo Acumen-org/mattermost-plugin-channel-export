@@ -484,7 +484,7 @@ func TestExecuteCommand(t *testing.T) {
 			client:       mockAPI,
 			botID:        "bot_id",
 			clusterMutex: clusterMutex,
-			makeChannelPostsIterator: func(_ *model.Channel, _ bool) PostIterator {
+			makeChannelPostsIterator: func(_ *model.Channel, _ bool, _ ExportFilter) PostIterator {
 				return func() ([]*ExportedPost, error) {
 					// Return a large number of posts to exceed the size limit
 					posts := make([]*ExportedPost, 100)

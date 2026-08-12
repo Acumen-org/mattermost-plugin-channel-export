@@ -11,6 +11,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -64,7 +65,7 @@ func TestChannelPostsIterator(t *testing.T) {
 	}
 
 	t.Run("One post iterator", func(t *testing.T) {
-		postIterator := channelPostsIterator(mockAPI, channel, false)
+		postIterator := channelPostsIterator(mockAPI, channel, false, ExportFilter{})
 
 		mockPost.EXPECT().GetPostsForChannel(channel.Id, 0, PerPage).Return(&postList, nil).Times(1)
 		mockUser.EXPECT().Get(post.UserId).Return(&user, nil).Times(1)
@@ -75,7 +76,7 @@ func TestChannelPostsIterator(t *testing.T) {
 	})
 
 	t.Run("Paging is correct", func(t *testing.T) {
-		postIterator := channelPostsIterator(mockAPI, channel, false)
+		postIterator := channelPostsIterator(mockAPI, channel, false, ExportFilter{})
 
 		length := PerPage
 		posts := make(map[string]*model.Post, length)
@@ -125,7 +126,7 @@ func TestChannelPostsIterator(t *testing.T) {
 		require.NoError(t, post.ShallowCopy(&editedPost))
 		editedPost.OriginalId = "original_id"
 
-		postIterator := channelPostsIterator(mockAPI, channel, false)
+		postIterator := channelPostsIterator(mockAPI, channel, false, ExportFilter{})
 
 		editedPostList := model.PostList{
 			Posts: map[string]*model.Post{
@@ -142,7 +143,7 @@ func TestChannelPostsIterator(t *testing.T) {
 	})
 
 	t.Run("Error when retreiving posts is moved up to the caller", func(t *testing.T) {
-		postIterator := channelPostsIterator(mockAPI, channel, false)
+		postIterator := channelPostsIterator(mockAPI, channel, false, ExportFilter{})
 
 		expectedError := errors.New("error retreiving posts")
 		mockPost.EXPECT().GetPostsForChannel(channel.Id, 0, PerPage).Return(nil, expectedError).Times(1)
@@ -153,7 +154,7 @@ func TestChannelPostsIterator(t *testing.T) {
 	})
 
 	t.Run("Error when exporting a post is moved up to the caller", func(t *testing.T) {
-		postIterator := channelPostsIterator(mockAPI, channel, false)
+		postIterator := channelPostsIterator(mockAPI, channel, false, ExportFilter{})
 
 		expectedError := fmt.Errorf("new error")
 		mockUser.EXPECT().Get(post.UserId).Return(nil, expectedError).Times(1)
@@ -303,5 +304,80 @@ func TestToExportedPost(t *testing.T) {
 		}
 
 		require.Equal(t, &expectedPost, actualExportedPost)
+	})
+}
+
+func TestChannelPostsIteratorFilter(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	since := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
+	until := time.Date(2024, 6, 10, 23, 59, 59, 999999999, time.UTC)
+
+	userID := "user1"
+	user := &model.User{Id: userID, Username: "alice"}
+
+	postBefore := &model.Post{
+		Id:       "post-before",
+		UserId:   userID,
+		CreateAt: time.Date(2024, 5, 31, 0, 0, 0, 0, time.UTC).UnixMilli(),
+		Message:  "before range",
+	}
+	postInRange := &model.Post{
+		Id:       "post-in",
+		UserId:   userID,
+		CreateAt: time.Date(2024, 6, 5, 0, 0, 0, 0, time.UTC).UnixMilli(),
+		Message:  "in range",
+	}
+	postAfter := &model.Post{
+		Id:       "post-after",
+		UserId:   userID,
+		CreateAt: time.Date(2024, 6, 11, 0, 0, 0, 0, time.UTC).UnixMilli(),
+		Message:  "after range",
+	}
+
+	mockChannel := mock_pluginapi.NewMockChannel(mockCtrl)
+	mockFile := mock_pluginapi.NewMockFile(mockCtrl)
+	mockLog := mock_pluginapi.NewMockLog(mockCtrl)
+	mockPost := mock_pluginapi.NewMockPost(mockCtrl)
+	mockSlashCommand := mock_pluginapi.NewMockSlashCommand(mockCtrl)
+	mockUser := mock_pluginapi.NewMockUser(mockCtrl)
+	mockSystem := mock_pluginapi.NewMockSystem(mockCtrl)
+	mockConfiguration := mock_pluginapi.NewMockConfiguration(mockCtrl)
+	mockCluster := mock_pluginapi.NewMockCluster(mockCtrl)
+
+	mockAPI := pluginapi.CustomWrapper(mockChannel, mockFile, mockLog, mockPost, mockSlashCommand, mockUser, mockSystem, mockConfiguration, mockCluster)
+
+	channel := &model.Channel{Id: "ch1"}
+
+	page0 := &model.PostList{
+		Posts: map[string]*model.Post{
+			postAfter.Id:   postAfter,
+			postInRange.Id: postInRange,
+			postBefore.Id:  postBefore,
+		},
+		Order: []string{postAfter.Id, postInRange.Id, postBefore.Id},
+	}
+
+	t.Run("filters to only in-range posts", func(t *testing.T) {
+		mockPost.EXPECT().GetPostsForChannel(channel.Id, 0, PerPage).Return(page0, nil).Times(1)
+		mockUser.EXPECT().Get(userID).Return(user, nil).Times(1)
+
+		filter := ExportFilter{Since: since, Until: until}
+		iter := channelPostsIterator(mockAPI, channel, false, filter)
+		posts, err := iter()
+		require.NoError(t, err)
+		require.Len(t, posts, 1)
+		assert.Equal(t, "post-in", posts[0].ID)
+	})
+
+	t.Run("no filter returns all posts", func(t *testing.T) {
+		mockPost.EXPECT().GetPostsForChannel(channel.Id, 0, PerPage).Return(page0, nil).Times(1)
+		mockUser.EXPECT().Get(userID).Return(user, nil).Times(1)
+
+		iter := channelPostsIterator(mockAPI, channel, false, ExportFilter{})
+		posts, err := iter()
+		require.NoError(t, err)
+		require.Len(t, posts, 3)
 	})
 }

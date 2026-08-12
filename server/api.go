@@ -24,13 +24,13 @@ const (
 // Handler encapsulates the context necessary for the channel export API.
 type Handler struct {
 	client            *pluginapi.Wrapper
-	makePostsIterator func(*model.Channel, bool) PostIterator
+	makePostsIterator func(*model.Channel, bool, ExportFilter) PostIterator
 	clusterMutex      pluginapi.ClusterMutex
 	plugin            *Plugin
 }
 
 // registerAPI registers the API against the given router.
-func registerAPI(plugin *Plugin, makePostsIterator func(*model.Channel, bool) PostIterator) error {
+func registerAPI(plugin *Plugin, makePostsIterator func(*model.Channel, bool, ExportFilter) PostIterator) error {
 	clusterMutex, err := plugin.client.Cluster.NewMutex(KeyClusterMutex)
 	if err != nil {
 		return fmt.Errorf("cannot create cluster mutex: %w", err)
@@ -159,7 +159,7 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	postIterator := h.makePostsIterator(channel, showEmailAddress(h.client, userID))
+	postIterator := h.makePostsIterator(channel, showEmailAddress(h.client, userID), ExportFilter{})
 
 	exporter := CSV{}
 	fileName := exporter.FileName(channel.Name)
