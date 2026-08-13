@@ -68,11 +68,12 @@ func handleError(w http.ResponseWriter, statusCode int, message string, a ...any
 	logrus.Warnf("%s (%d): %s", http.StatusText(statusCode), statusCode, message)
 
 	w.WriteHeader(statusCode)
-	b, _ := json.Marshal(APIError{
+	apiErr := APIError{
 		StatusCode: statusCode,
 		StatusText: http.StatusText(statusCode),
 		Message:    message,
-	})
+	}
+	b, _ := json.Marshal(apiErr) //nolint:errcheck // json.Marshal on a fixed struct never fails
 	_, err := w.Write(b)
 	if err != nil {
 		logrus.WithError(err).Warnf("failed to handle error")
@@ -217,7 +218,7 @@ func (h *Handler) ExportDialog(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		resp := model.SubmitDialogResponse{Error: msg}
-		b, _ := json.Marshal(resp)
+		b, _ := json.Marshal(resp) //nolint:errcheck // json.Marshal on a fixed struct never fails
 		_, _ = w.Write(b)
 	}
 
@@ -284,8 +285,8 @@ func (h *Handler) ExportDialog(w http.ResponseWriter, r *http.Request) {
 		limitedWriter := util.NewLimitPipeWriter(pw, h.plugin.getMaxFileSize())
 
 		go func() {
-			if err := exporter.Export(postIter, limitedWriter); err != nil {
-				_ = limitedWriter.CloseWithError(err)
+			if exportErr := exporter.Export(postIter, limitedWriter); exportErr != nil {
+				_ = limitedWriter.CloseWithError(exportErr)
 				return
 			}
 			_ = limitedWriter.Close()
@@ -312,6 +313,6 @@ func (h *Handler) ExportDialog(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	b, _ := json.Marshal(model.SubmitDialogResponse{})
+	b, _ := json.Marshal(model.SubmitDialogResponse{}) //nolint:errcheck // json.Marshal on a fixed struct never fails
 	_, _ = w.Write(b)
 }
