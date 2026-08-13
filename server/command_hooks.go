@@ -78,7 +78,16 @@ func (p *Plugin) ExecuteCommand(_ *plugin.Context, args *model.CommandArgs) (*mo
 	}
 }
 
-func (p *Plugin) executeCommandExport(args *model.CommandArgs) *model.CommandResponse {
+func (p *Plugin) executeCommandExport(args *model.CommandArgs) (resp *model.CommandResponse) {
+	defer func() {
+		if r := recover(); r != nil {
+			p.client.Log.Error("panic in executeCommandExport", "panic", fmt.Sprintf("%v", r))
+			resp = &model.CommandResponse{
+				ResponseType: model.CommandResponseTypeEphemeral,
+				Text:         fmt.Sprintf("Export failed with internal error: %v", r),
+			}
+		}
+	}()
 	// only allow one export at a time
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
 	defer cancel()
@@ -147,9 +156,9 @@ func (p *Plugin) executeCommandExport(args *model.CommandArgs) *model.CommandRes
 				Text:         "Unable to open the export dialog.",
 			}
 		}
-		// Unlock the mutex immediately — dialog submission will re-acquire it
+		// Mark active first so the defer doesn't also unlock
+		active = true
 		p.clusterMutex.Unlock()
-		active = false
 		return &model.CommandResponse{}
 	}
 
