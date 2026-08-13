@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,9 +29,35 @@ func TestCSVFileName(t *testing.T) {
 
 	for _, test := range testCases {
 		t.Run(test.testName, func(*testing.T) {
-			require.Equal(t, exporter.FileName(test.name), test.expectedFilename)
+			require.Equal(t, exporter.FileName(test.name, ExportFilter{}), test.expectedFilename)
 		})
 	}
+}
+
+func TestCSVFileNameWithFilter(t *testing.T) {
+	e := CSV{}
+
+	t.Run("no filter", func(t *testing.T) {
+		assert.Equal(t, "mychannel.csv", e.FileName("mychannel", ExportFilter{}))
+	})
+
+	t.Run("since only", func(t *testing.T) {
+		f := ExportFilter{Since: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}
+		assert.Equal(t, "mychannel_from_2024-01-01.csv", e.FileName("mychannel", f))
+	})
+
+	t.Run("until only", func(t *testing.T) {
+		f := ExportFilter{Until: time.Date(2024, 3, 31, 23, 59, 59, 0, time.UTC)}
+		assert.Equal(t, "mychannel_to_2024-03-31.csv", e.FileName("mychannel", f))
+	})
+
+	t.Run("both bounds", func(t *testing.T) {
+		f := ExportFilter{
+			Since: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			Until: time.Date(2024, 3, 31, 23, 59, 59, 0, time.UTC),
+		}
+		assert.Equal(t, "mychannel_from_2024-01-01_to_2024-03-31.csv", e.FileName("mychannel", f))
+	})
 }
 
 func exportedPostToCSV(post *ExportedPost) string {

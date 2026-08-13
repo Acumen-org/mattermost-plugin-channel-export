@@ -70,7 +70,8 @@ func (c *Client) doGet(u string) (*http.Response, error) {
 }
 
 // ExportChannel exports the given channel in the given format to the given writer.
-func (c *Client) ExportChannel(w io.Writer, channelID string, format string) error {
+// since and until are optional date strings in YYYY-MM-DD format; empty string means no bound.
+func (c *Client) ExportChannel(w io.Writer, channelID, format, since, until string) error {
 	u, err := url.Parse(c.buildURL("/api/v1/export"))
 	if err != nil {
 		return err
@@ -79,6 +80,12 @@ func (c *Client) ExportChannel(w io.Writer, channelID string, format string) err
 	q := u.Query()
 	q.Add("channel_id", channelID)
 	q.Add("format", format)
+	if since != "" {
+		q.Add("since", since)
+	}
+	if until != "" {
+		q.Add("until", until)
+	}
 	u.RawQuery = q.Encode()
 
 	resp, err := c.doGet(u.String())

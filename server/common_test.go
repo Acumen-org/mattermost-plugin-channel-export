@@ -10,7 +10,7 @@ import (
 	"github.com/mattermost/mattermost/server/public/model"
 )
 
-func makeTestPostsIterator(_ *testing.T, now time.Time) func(channel *model.Channel, showEmailAddress bool) PostIterator {
+func makeTestPostsIterator(_ *testing.T, now time.Time) func(channel *model.Channel, showEmailAddress bool, filter ExportFilter) PostIterator {
 	exportedPosts := []*ExportedPost{
 		{
 			CreateAt:     now.Round(time.Millisecond).UTC(),
@@ -25,7 +25,7 @@ func makeTestPostsIterator(_ *testing.T, now time.Time) func(channel *model.Chan
 		},
 	}
 
-	return func(_ *model.Channel, showEmailAddress bool) PostIterator {
+	return func(_ *model.Channel, showEmailAddress bool, _ ExportFilter) PostIterator {
 		return func() ([]*ExportedPost, error) {
 			retExportedPosts := exportedPosts
 			if !showEmailAddress {
